@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Dark Kingdom"
-run/main_scene="uid://katdo3l3kk34"
+run/main_scene="uid://bic4bfc4bc8aq"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
