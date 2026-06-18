@@ -12,6 +12,7 @@ enum SkeletonState {
 @onready var ground_detector: RayCast2D = $GroundDetector
 @onready var player_detector: RayCast2D = $PlayerDetector
 @onready var bone_start_position: Node2D = $BoneStartPosition
+@onready var som_dano: AudioStreamPlayer2D = $SomDano
 
 const SPINNING_BONE = preload("uid://dmkeh0wu3qswe")
 
@@ -63,6 +64,8 @@ func go_to_hurt_state():
 	hitbox.set_deferred("monitorable", false)
 	
 	hitbox.process_mode = Node.PROCESS_MODE_DISABLED
+	
+	som_dano.play() # Toca o som de dano do inimigo ao ser atigindo
 	
 func walk_state(_delta):
 	velocity.x = SPEED * direction 

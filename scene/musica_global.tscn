@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://pkqpco1g3bec"]
+
+[ext_resource type="AudioStream" uid="uid://ds428enqrhucr" path="res://sounds/music_forest.ogg" id="1_0db1d"]
+
+[node name="MusicaGlobal" type="AudioStreamPlayer" unique_id=322243636]
+stream = ExtResource("1_0db1d")
+volume_db = -1.0
+autoplay = true

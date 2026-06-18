@@ -16,7 +16,15 @@ enum PlayerState {
 @onready var colisao_em_pe: CollisionShape2D = $ColisaoEmPe
 @onready var reload_timer: Timer = $ReloadTimer
 @onready var hitbox_collision_shape: CollisionShape2D = $Hitbox/CollisionShape2D
+@onready var som_pulo: AudioStreamPlayer2D = $SomPulo
+@onready var som_derrota: AudioStreamPlayer2D = $SomDerrota
+@onready var som_ataque: AudioStreamPlayer2D = $SomAtaque
+@onready var som_dano: AudioStreamPlayer2D = $SomDano
+@onready var vidas_ui = $HUD/VidasUI # Pega a referência do contêiner de coraçõea
+@onready var tempo_invulneravel: Timer = $TempoInvulneravel
 
+@export var vidas_maximas = 3
+var vidas_atuais = 3
 
 @export var max_speed = 100
 @export var acceleration = 500
@@ -25,15 +33,22 @@ const JUMP_VELOCITY = -300.0
 
 var direction = 0
 var status: PlayerState
-var atacando = true
+var atacando = false
 
 func _ready() -> void:
+	vidas_atuais = vidas_maximas
 	go_to_idle_state()
 
 func _physics_process(delta: float) -> void:
 	
 	if not is_on_floor():
 		velocity += get_gravity() * delta
+		
+	# Morte por queda: Se a posição Y passar de um certo valor (ex: 1000)
+	# Ajuste esse "1000" dependendo da profundidade da sua fase
+	if global_position.y > 1000:
+		if vidas_atuais > 0:
+			morte_instantanea()
 	
 	match status:
 		PlayerState.idle:
@@ -65,6 +80,7 @@ func go_to_jump_state():
 	status = PlayerState.jump
 	anim.play("jump")
 	velocity.y = JUMP_VELOCITY
+	som_pulo.play() # Toca o som do pulo
 	
 func go_to_fall_state():
 	status = PlayerState.fall
@@ -98,6 +114,8 @@ func go_to_downswing_state():
 		
 	hitbox_collision_shape.shape.size.y = 28
 	hitbox_collision_shape.position.y = 1.0
+	
+	som_ataque.play() # Toca o som da espadada
 		
 func exit_from_downswing_state():
 	# Retorna à colisão padrão ao fim do ataque
@@ -111,13 +129,53 @@ func exit_from_downswing_state():
 	hitbox_collision_shape.position.y = 0.0
 	
 func go_to_hurt_state():
-	if status == PlayerState.hurt:
+	# 1. A BARREIRA DE AÇO: Se o timer ainda está rodando, IGNORA o dano totalmente!
+	if not tempo_invulneravel.is_stopped():
 		return
+	
+	# Se o jogo passar daqui, significa que pode tomar dano. Inicia o relógio!
+	tempo_invulneravel.start() 
+	
+	# Desconta apenas 1 vida com segurança
+	vidas_atuais = -1
+	
+	# Mensagem de debug para você ver no console:
+	print("Tomou 1 hit do inimigo! Vidas restantes: ", vidas_atuais)
+	
+	atualizar_ui_vidas() # Chama a função que apaga o coração
+	
 	status = PlayerState.hurt
 	anim.play("hurt")
-	velocity.x = 0
-	reload_timer.start()
 	
+	if vidas_atuais <= 0:
+		# Se acabou a vida, toca o som de derrota e morre
+		som_derrota.play()
+		velocity.x = 0
+		reload_timer.start()
+		# (O timer vai reiniciar a cena quando acabar)
+	else:
+		# Tomou dano, mas continua vivo.
+		# Aplica um "Knockback" (empurrão) para trás para tirá-lo de dentro do inimigo
+		velocity.y = -200
+		velocity.x = -150 if not anim.flip_h else 150
+		som_dano.play()
+		
+		# Efeito de piscar (50% transparente)
+		anim.modulate.a = 0.5
+		
+		# Espera 1.5 segundos de segurança para acabar a invulnerabilidade
+		await get_tree().create_timer(1.5).timeout
+		
+		# Retorna ao normal
+		anim.modulate.a = 1.0
+		
+func _on_animated_sprite_2d_animation_finished() -> void:
+	atacando = false
+	
+	# Se a animação de dano terminar e ele ainda tiver vida, volta pro idle
+	if anim.animation == "hurt" and vidas_atuais > 0:
+		go_to_idle_state()
+
 func idle_state(delta):
 	move(delta)
 	if velocity.x != 0:
@@ -228,19 +286,40 @@ func update_direction():
 		$Hitbox.scale.x = 1
 	 
 func _on_hitbox_area_entered(area: Area2D) -> void:
+	if area.is_in_group("MorteInstantanea"):
+		morte_instantanea()
+		return
+		
+	# PRIORIDADE 1: Avaliar os projéteis antes do inimigos
+	if area.is_in_group("LethalArea"):
+		if status == PlayerState.downswing:
+			# REBATEU O PROJÉTIL!
+			# O set_deferred desliga a colisão na mesma hora para evitar o "dano fantasma"
+			area.set_deferred("monitoring", false)
+			area.queue_free()
+		else:
+			go_to_hurt_state()
+			area.set_deferred("monitoring", false)
+			area.queue_free() # Destrói o osso aqui também para não dar hit duplo!
+		return # O return garante que ele não vai tentar rodar o código de baixo
+		
+	# PRIORIDADE 2: Bater no corpo do inimigo
 	if area.is_in_group("Enemies"):
 		hit_enemy(area)
-	elif area.is_in_group("LethalArea"):
-		# Se a Hitbox tocar no osso e o Player ESTIVER atacando:
-		if status == PlayerState.downswing:
-			area.queue_free() # Destrói o projétil (rebate a magia!)
-		# Se o projétil encostar na espada, mas o Player NÃO estiver atacando:
-		else:
-			hit_lethal_area()
 			
 func _on_hitbox_body_entered(body: Node2D) -> void:
+	# Agora ele detecta se a Lava (TileMap ou StaticBody) tem o grupo MorteInstantanea
+	if body.is_in_group("MorteInstantanea"):
+		morte_instantanea()
+		return
+	
 	if body.is_in_group("LethalArea"):
-		go_to_hurt_state()
+		# Se o projétil for um Body ao invés de Area, a defesa funciona aqui também
+		if status == PlayerState.downswing:
+			body.queue_free()
+		else:
+			go_to_hurt_state()
+			body.queue_free()
 	
 func hit_enemy(area: Area2D):
 	# Verifica se o jogador está executando o ataque com a espada (tecla X)
@@ -248,15 +327,43 @@ func hit_enemy(area: Area2D):
 		# Inimigo morre/toma dano
 		area.get_parent().take_damage()
 	else:
-		# Se encostar no inimigo sem estar atacando, o Player toma dano
-		go_to_hurt_state()
+			go_to_hurt_state()
 	
 func hit_lethal_area():
-	go_to_hurt_state()
+		go_to_hurt_state()
 
 func _on_reload_timer_timeout() -> void:
-	get_tree().reload_current_scene()	
+	if vidas_atuais <= 0:
+		get_tree().reload_current_scene()	
+	else:
+		go_to_idle_state() # Volta ao normal após tomar um hit
+	
+func atualizar_ui_vidas():
+	# Conta de trás para frente e esconde o coração correspondente
+	var coracoes = vidas_ui.get_children()
+	for i in range(coracoes.size()):
+		if i < vidas_atuais:
+			coracoes[i].show() # Mantém visível se tem a vida
+		else:
+			coracoes[i].hide() # Esconde se perdeu a vida 
 
-func _on_animated_sprite_2d_animation_finished() -> void:
-	atacando = false
+func morte_instantanea():
+	# Se já está no estado de dano, não faz nada para não repetir
+	if status == PlayerState.hurt:
+		return
+	
+	# Zera a vida e atualiza os corações
+	vidas_atuais = 0
+	atualizar_ui_vidas()
+	
+	# Executa a morte de forma independente
+	som_derrota.play()
+	status = PlayerState.hurt
+	anim.play("hurt")
+	velocity.x = 0
+	
+	# Inicia o tempo para resnacer
+	reload_timer.start()
+	
+	
 	

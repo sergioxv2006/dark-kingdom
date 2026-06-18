@@ -105,6 +105,9 @@ size = Vector2(20, 453.3333)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_xflqb"]
 size = Vector2(20, 205)
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_xnncp"]
+size = Vector2(412, 92)
+
 [node name="Tropic" type="Node2D" unique_id=488620674]
 metadata/_edit_vertical_guides_ = [1225.0]
 
@@ -205,5 +208,12 @@ collision_mask = 6
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Limit" unique_id=712304304]
 position = Vector2(-8, 91)
 shape = SubResource("RectangleShape2D_xflqb")
+
+[node name="DeadVoid" type="Area2D" parent="." unique_id=2070714]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DeadVoid" unique_id=1875710218 groups=["MorteInstantanea"]]
+position = Vector2(243, 299)
+shape = SubResource("RectangleShape2D_xnncp")
+debug_color = Color(0.9113113, 0.2591116, 0.37596074, 0.41960785)
 
 [editable path="LevelEnd"]
